@@ -11,7 +11,7 @@
 // ====== CONFIG ================================================
 const CONFIG = {
   // Paste your Apps Script Web App /exec URL here after deploying Code.gs
-  API_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbzBUnkd9Lz6uDxTxt8KYCANRHr8PZ4xd4Mhe0NJCZ4tFjXGWTMgdVKd_KMFRP9c0Jbt/exec',
   REFRESH_MS: 30000,      // background product refresh interval
   CURRENCY_PREFIX: 'Rs. ',
   LOW_STOCK_THRESHOLD: 5

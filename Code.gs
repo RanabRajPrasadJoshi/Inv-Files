@@ -30,7 +30,7 @@
 const SHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
 const PRODUCTS_SHEET_NAME = 'Products';
 const ORDERS_SHEET_NAME = 'Orders';
-const OWNER_EMAIL = 'owner@example.com'; // <-- change to the store owner's inbox
+const OWNER_EMAIL = 'ranabjoshi20@gmail.com'; // <-- change to the store owner's inbox
 const STORE_NAME = 'Woolly & Co.';
 
 // Column order for the Orders sheet

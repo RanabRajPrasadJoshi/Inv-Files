@@ -6,6 +6,18 @@
  * price and stock. The frontend never trusts its own numbers —
  * every order is re-validated against the sheet in here.
  *
+ * SHEET LAYOUT THIS EXPECTS (Products tab, row 1 = these exact headers):
+ *   Image | Code | Categories and ITEMS name | Rate | Stock QTY | Price | Import QTY | Description | Featured
+ *
+ *   - Code                          -> the product's unique ID (e.g. F-DC-001)
+ *   - Categories and ITEMS name     -> "Category | Item name", e.g. "Felted Deco | Buddha"
+ *   - Rate                          -> the selling price shown on the site
+ *   - Stock QTY                     -> live stock count
+ *   - Price                         -> Rate × Stock QTY, your own inventory-value column (site ignores this)
+ *   - Import QTY                    -> restock quantity; any value > 0 marks the item as "New" on the site
+ *   - Image                         -> a direct image URL (NOT an inserted/pasted picture — see README)
+ *   - Description / Featured        -> optional. Safe to leave blank.
+ *
  * DEPLOY AS: Extensions > Apps Script > Deploy > New deployment
  *            Type: Web app
  *            Execute as: Me
@@ -18,14 +30,8 @@
 const SHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
 const PRODUCTS_SHEET_NAME = 'Products';
 const ORDERS_SHEET_NAME = 'Orders';
-const OWNER_EMAIL = 'ranabjoshi20@gmail.com'; 
+const OWNER_EMAIL = 'owner@example.com'; // <-- change to the store owner's inbox
 const STORE_NAME = 'Woolly & Co.';
-
-// Column order for the Products sheet (row 1 = headers, must match exactly)
-const PRODUCT_COLS = [
-  'ProductID', 'ProductName', 'Category', 'Price', 'Quantity',
-  'ImageURL', 'Description', 'Featured', 'New'
-];
 
 // Column order for the Orders sheet
 const ORDER_COLS = [
@@ -80,30 +86,16 @@ function getOrdersSheet_() {
   return SpreadsheetApp.openById(SHEET_ID).getSheetByName(ORDERS_SHEET_NAME);
 }
 
-/** Reads every product row into an array of plain objects. */
-function getAllProducts() {
-  const sheet = getProductsSheet_();
-  const values = sheet.getDataRange().getValues();
-  const headers = values[0].map(h => String(h).trim());
-  const rows = values.slice(1);
-
-  return rows
-    .filter(r => r.some(cell => cell !== '' && cell !== null)) // skip blank rows
-    .map(r => {
-      const obj = {};
-      headers.forEach((h, i) => obj[h] = r[i]);
-      return {
-        id: String(obj.ProductID),
-        name: String(obj.ProductName || ''),
-        category: String(obj.Category || ''),
-        price: Number(obj.Price) || 0,
-        quantity: Math.max(0, Math.floor(Number(obj.Quantity) || 0)),
-        image: String(obj.ImageURL || ''),
-        description: String(obj.Description || ''),
-        featured: truthy_(obj.Featured),
-        isNew: truthy_(obj.New)
-      };
-    });
+/** Splits "Category | Item name" into { category, name }. Tolerates a
+ *  missing "|" by treating the whole string as the name. */
+function parseCategoryAndName_(raw) {
+  const str = String(raw || '').trim();
+  const idx = str.indexOf('|');
+  if (idx === -1) return { category: '', name: str };
+  return {
+    category: str.slice(0, idx).trim(),
+    name: str.slice(idx + 1).trim()
+  };
 }
 
 function truthy_(v) {
@@ -111,11 +103,41 @@ function truthy_(v) {
   return s === 'true' || s === 'yes' || s === '1' || s === 'y';
 }
 
-/** Finds a product's row index (1-based, includes header) by ProductID. */
+/** Reads every product row into an array of plain objects the frontend understands. */
+function getAllProducts() {
+  const sheet = getProductsSheet_();
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(h => String(h).trim());
+  const rows = values.slice(1);
+
+  const col = name => headers.indexOf(name); // -1 if the column doesn't exist (optional columns)
+
+  return rows
+    .filter(r => r.some(cell => cell !== '' && cell !== null)) // skip blank rows
+    .map(r => {
+      const get = name => { const i = col(name); return i === -1 ? '' : r[i]; };
+      const { category, name } = parseCategoryAndName_(get('Categories and ITEMS name'));
+      const importQty = Math.max(0, Math.floor(Number(get('Import QTY')) || 0));
+
+      return {
+        id: String(get('Code')),
+        name: name,
+        category: category,
+        price: Number(get('Rate')) || 0,
+        quantity: Math.max(0, Math.floor(Number(get('Stock QTY')) || 0)),
+        image: String(get('Image') || ''),
+        description: String(get('Description') || ''),
+        featured: truthy_(get('Featured')),
+        isNew: importQty > 0
+      };
+    });
+}
+
+/** Finds a product's row index (1-based, includes header) by Code. */
 function findProductRow_(sheet, productId) {
   const values = sheet.getDataRange().getValues();
   const headers = values[0].map(h => String(h).trim());
-  const idCol = headers.indexOf('ProductID');
+  const idCol = headers.indexOf('Code');
   for (let i = 1; i < values.length; i++) {
     if (String(values[i][idCol]) === String(productId)) {
       return { rowIndex: i + 1, headers: headers };
@@ -155,13 +177,13 @@ function createOrder(payload) {
     if (!found) return { ok: false, error: 'That product could not be found.' };
 
     const { rowIndex, headers } = found;
-    const priceCol = headers.indexOf('Price') + 1;
-    const qtyCol = headers.indexOf('Quantity') + 1;
-    const nameCol = headers.indexOf('ProductName') + 1;
+    const rateCol = headers.indexOf('Rate') + 1;
+    const stockCol = headers.indexOf('Stock QTY') + 1;
+    const nameRawCol = headers.indexOf('Categories and ITEMS name') + 1;
 
-    const currentPrice = Number(sheet.getRange(rowIndex, priceCol).getValue()) || 0;
-    const currentQty = Math.floor(Number(sheet.getRange(rowIndex, qtyCol).getValue())) || 0;
-    const productName = String(sheet.getRange(rowIndex, nameCol).getValue());
+    const currentPrice = Number(sheet.getRange(rowIndex, rateCol).getValue()) || 0;
+    const currentQty = Math.floor(Number(sheet.getRange(rowIndex, stockCol).getValue())) || 0;
+    const { name: productName } = parseCategoryAndName_(sheet.getRange(rowIndex, nameRawCol).getValue());
 
     if (currentQty <= 0) {
       return { ok: false, error: 'This product is now out of stock.' };
@@ -175,13 +197,16 @@ function createOrder(payload) {
     const remaining = currentQty - qtyRequested;
     const orderId = generateOrderId_();
 
-    // 1. reduce stock
-    sheet.getRange(rowIndex, qtyCol).setValue(remaining);
+    // 1. reduce stock (Stock QTY column — the sheet's own Price column,
+    //    being Rate × Stock QTY, is left for you to recalculate manually
+    //    or with a formula, since it's your inventory-value figure, not
+    //    something the storefront depends on)
+    sheet.getRange(rowIndex, stockCol).setValue(remaining);
 
     // 2. log the order
     const ordersSheet = getOrdersSheet_();
-    ordersSheet.appendRow(ORDER_COLS.map(col => {
-      switch (col) {
+    ordersSheet.appendRow(ORDER_COLS.map(colName => {
+      switch (colName) {
         case 'Timestamp': return new Date();
         case 'OrderID': return orderId;
         case 'ProductID': return productId;
@@ -269,16 +294,16 @@ function sendOwnerEmail_(o) {
 // ====== ONE-TIME SETUP HELPER =====================================
 // Run this once from the Apps Script editor (select it in the function
 // dropdown and press Run) to create both sheets with correct headers
-// if they don't already exist.
+// if they don't already exist. If you're importing the provided
+// Woolly-and-Co-Product-Database.xlsx instead, you can skip this —
+// it already has the Products/Orders tabs and your real product rows.
 function setupSheets() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
 
   if (!ss.getSheetByName(PRODUCTS_SHEET_NAME)) {
     const p = ss.insertSheet(PRODUCTS_SHEET_NAME);
-    p.appendRow(PRODUCT_COLS);
-    p.appendRow(['P001', 'Felted Wool Tote', 'Bags', 2500, 12,
-      'https://images.example.com/tote.jpg',
-      'Hand-felted merino wool tote bag, lined with cotton.', 'TRUE', 'TRUE']);
+    p.appendRow(['Image', 'Code', 'Categories and ITEMS name', 'Rate', 'Stock QTY', 'Price', 'Import QTY', 'Description', 'Featured']);
+    p.appendRow(['', 'F-DC-001', 'Felted Deco | Bean M-with Soap', 580, 67, 38860, 100, 'Hand-felted decorative piece.', 'TRUE']);
     p.setFrozenRows(1);
   }
 

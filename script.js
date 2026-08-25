@@ -11,7 +11,7 @@
 // ====== CONFIG ================================================
 const CONFIG = {
   // Paste your Apps Script Web App /exec URL here after deploying Code.gs
-  API_URL: 'https://script.google.com/macros/s/AKfycbzBUnkd9Lz6uDxTxt8KYCANRHr8PZ4xd4Mhe0NJCZ4tFjXGWTMgdVKd_KMFRP9c0Jbt/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbz3DV7wqny6CHZcwCRydmNUuRxD56b70uePMoW5Vp2v184mPnbF2O2pSBZ8qxYfmmBJ/exec',
   REFRESH_MS: 30000,      // background product refresh interval
   CURRENCY_PREFIX: 'Rs. ',
   LOW_STOCK_THRESHOLD: 5
@@ -238,7 +238,10 @@ function productCard(p) {
       <span class="price-tag">${formatPrice(p.price)}</span>
     </div>
     <div class="product-info">
-      <span class="product-cat">${escapeHtml(p.category || 'Handmade')}</span>
+      <div class="product-meta-row">
+        <span class="product-cat">${escapeHtml(p.category || 'Handmade')}</span>
+        <span class="sku-tag">${escapeHtml(p.sku || p.id)}</span>
+      </div>
       <h3 class="product-name"><a href="#/product/${encodeURIComponent(p.id)}" data-route-product="${p.id}">${escapeHtml(p.name)}</a></h3>
       <div class="product-actions">
         <button class="btn btn-ghost" ${disabled} data-add-cart="${p.id}">Add to cart</button>
@@ -285,6 +288,7 @@ function renderProductDetail(id) {
       </div>
       <div class="pd-copy">
         <p class="pd-crumb"><a href="#/shop" data-route="/shop">Shop</a> / <a href="#/shop?cat=${encodeURIComponent(p.category)}" data-route="/shop">${escapeHtml(p.category)}</a></p>
+        <div class="pd-sku">SKU: ${escapeHtml(p.sku || p.id)}</div>
         <h1>${escapeHtml(p.name)}</h1>
         <div class="pd-price">${formatPrice(p.price)}</div>
         <p class="pd-desc">${escapeHtml(p.description)}</p>

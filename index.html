@@ -40,6 +40,7 @@
       <a href="#/home" data-route="/home">Home</a>
       <a href="#/shop" data-route="/shop">Shop</a>
       <a href="#/shop?cat=all" data-route="/shop">Categories</a>
+      <a href="#/inventory" data-route="/inventory">Inventory</a>
       <a href="#/about" data-route="/about">About</a>
       <a href="#/contact" data-route="/contact">Contact</a>
     </nav>
@@ -69,6 +70,7 @@
 <div class="mobile-menu" id="mobileMenu">
   <a href="#/home" data-route="/home">Home</a>
   <a href="#/shop" data-route="/shop">Shop</a>
+  <a href="#/inventory" data-route="/inventory">Inventory</a>
   <a href="#/about" data-route="/about">About</a>
   <a href="#/contact" data-route="/contact">Contact</a>
 </div>
@@ -192,6 +194,44 @@
     <div class="wrap">
       <h1>Your cart</h1>
       <div id="cartView"><!-- injected --></div>
+    </div>
+  </section>
+
+  <!-- ============ INVENTORY VIEW ============ -->
+  <section class="view" id="view-inventory" data-view="inventory">
+    <div class="wrap inventory-head">
+      <div>
+        <h1>Inventory</h1>
+        <p class="muted">A live read-out of everything in the Products sheet — for checking stock, not for customers.</p>
+      </div>
+      <div class="inventory-head-actions">
+        <button class="btn btn-ghost small" id="inventoryRefresh">Refresh now</button>
+        <button class="btn btn-primary small" id="inventoryExport">Export CSV</button>
+      </div>
+    </div>
+
+    <div class="wrap inventory-summary" id="inventorySummary"><!-- injected --></div>
+
+    <div class="wrap inventory-table-wrap">
+      <div class="table-scroll">
+        <table class="inventory-table" id="inventoryTable">
+          <thead>
+            <tr>
+              <th data-sort="image" class="col-image">Image</th>
+              <th data-sort="sku">Code</th>
+              <th data-sort="category">Category</th>
+              <th data-sort="name">Item</th>
+              <th data-sort="price" class="col-num">Rate</th>
+              <th data-sort="quantity" class="col-num">Stock Qty</th>
+              <th data-sort="value" class="col-num">Value</th>
+              <th data-sort="status">Status</th>
+            </tr>
+          </thead>
+          <tbody id="inventoryBody"><!-- injected --></tbody>
+          <tfoot id="inventoryFoot"><!-- injected --></tfoot>
+        </table>
+      </div>
+      <p class="empty-state" id="inventoryEmpty" hidden>No products found — check the Products sheet and API_URL.</p>
     </div>
   </section>
 

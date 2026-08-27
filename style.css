@@ -188,7 +188,10 @@ p{ margin:0 0 1em; }
 }
 
 .product-info{ padding:16px 16px 18px; display:flex; flex-direction:column; gap:6px; flex:1; }
+.product-meta-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .product-cat{ font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:700; }
+.sku-tag{ font-family:var(--font-mono); font-size:.68rem; color:var(--muted); background:var(--bg-warm); padding:2px 7px; border-radius:4px; white-space:nowrap; }
+.pd-sku{ font-family:var(--font-mono); font-size:.78rem; color:var(--muted); margin:6px 0 2px; }
 .product-name{ font-family:var(--font-display); font-size:1.08rem; font-weight:600; }
 .product-name a{ color:inherit; }
 .product-actions{ margin-top:auto; display:flex; gap:8px; padding-top:10px; }
@@ -322,6 +325,39 @@ select{ width:100%; padding:9px 10px; border:1px solid var(--line); border-radiu
 .site-footer a{ display:block; padding:5px 0; color:var(--ink-soft); }
 .site-footer a:hover{ color:var(--rust); }
 .footer-bottom{ border-top:1px solid var(--line); padding:18px 24px; font-size:.82rem; color:var(--muted); }
+
+/* ==========================================================
+   INVENTORY
+   ========================================================== */
+.inventory-head{ padding:48px 0 20px; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+.inventory-head-actions{ display:flex; gap:10px; }
+.inventory-summary{ display:grid; grid-template-columns:repeat(5,1fr); gap:14px; padding-bottom:28px; }
+.summary-card{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+.summary-card .num{ font-family:var(--font-mono); font-size:1.5rem; font-weight:700; color:var(--ink); display:block; }
+.summary-card .label{ font-size:.76rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+.summary-card.warn .num{ color:var(--rust-dark); }
+
+.inventory-table-wrap{ padding-bottom:80px; }
+.table-scroll{ overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+.inventory-table{ width:100%; border-collapse:collapse; background:var(--card); font-size:.9rem; min-width:760px; }
+.inventory-table th, .inventory-table td{ padding:12px 14px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+.inventory-table thead th{ position:sticky; top:0; background:var(--ink); color:#fff; font-weight:700; font-size:.76rem; text-transform:uppercase; letter-spacing:.05em; cursor:pointer; user-select:none; }
+.inventory-table thead th:hover{ background:var(--rust-dark); }
+.inventory-table thead th.sorted::after{ content:" ▾"; font-size:.7rem; }
+.inventory-table thead th.sorted.asc::after{ content:" ▴"; }
+.inventory-table tbody tr:hover{ background:var(--bg-warm); }
+.inventory-table .col-num{ text-align:right; }
+.inventory-table td.col-num{ font-family:var(--font-mono); }
+.inventory-table .col-image img{ width:40px; height:40px; object-fit:cover; border-radius:6px; }
+.inventory-table tfoot td{ font-weight:700; font-family:var(--font-mono); background:var(--bg-warm); border-top:2px solid var(--ink); border-bottom:0; }
+.inv-status{ font-size:.7rem; font-weight:700; padding:3px 9px; border-radius:999px; font-family:var(--font-mono); }
+.inv-status.in{ background:#E9F0E3; color:var(--moss-dark); }
+.inv-status.low{ background:#F7E4DD; color:var(--rust-dark); }
+.inv-status.out{ background:var(--bg-warm); color:var(--muted); }
+
+@media (max-width: 720px){
+  .inventory-summary{ grid-template-columns:repeat(2,1fr); }
+}
 
 /* ==========================================================
    VIEW ROUTING

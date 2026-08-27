@@ -24,6 +24,7 @@ const state = {
   lastFetch: 0,
   cart: loadCart(),       // [{id, qty}]
   filters: { category: 'all', inStockOnly: false, featuredOnly: false, sort: 'default', q: '' },
+  inventorySort: { key: 'category', dir: 'asc' },
   route: { view: 'home', params: {} }
 };
 
@@ -130,6 +131,7 @@ function renderCurrentView() {
     case 'shop': renderShop(); break;
     case 'product': renderProductDetail(state.route.param); break;
     case 'cart': renderCartView(); break;
+    case 'inventory': renderInventory(); break;
     default: break;
   }
 }
@@ -465,6 +467,99 @@ function bindCartLineControls(root) {
   $$('[data-cart-remove]', root).forEach(b => b.addEventListener('click', () => removeFromCart(b.dataset.cartRemove)));
 }
 
+// ====== INVENTORY =========================================================
+/**
+ * A plain, sortable table of everything in the Products sheet — meant for
+ * the store owner to eyeball total stock, not a customer-facing page.
+ * Reads straight from state.products, which is refreshed on the same
+ * 30-second cycle as the shop.
+ */
+function inventoryRows() {
+  const rows = state.products.map(p => ({
+    ...p,
+    value: p.price * p.quantity,
+    status: p.quantity <= 0 ? 'out' : (p.quantity <= CONFIG.LOW_STOCK_THRESHOLD ? 'low' : 'in')
+  }));
+  const { key, dir } = state.inventorySort;
+  const mul = dir === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    let av = a[key], bv = b[key];
+    if (typeof av === 'string') { av = av.toLowerCase(); bv = String(bv).toLowerCase(); }
+    if (av < bv) return -1 * mul;
+    if (av > bv) return 1 * mul;
+    return 0;
+  });
+  return rows;
+}
+
+function renderInventory() {
+  const rows = inventoryRows();
+  const el = $('#inventoryTable');
+  $('#inventoryEmpty').hidden = rows.length !== 0 || state.lastFetch === 0;
+  el.style.display = rows.length || state.lastFetch === 0 ? '' : 'none';
+
+  // ---- summary cards ----
+  const totalUnits = rows.reduce((s, r) => s + r.quantity, 0);
+  const totalValue = rows.reduce((s, r) => s + r.value, 0);
+  const outCount = rows.filter(r => r.status === 'out').length;
+  const lowCount = rows.filter(r => r.status === 'low').length;
+
+  $('#inventorySummary').innerHTML = `
+    <div class="summary-card"><span class="num">${rows.length}</span><span class="label">Products</span></div>
+    <div class="summary-card"><span class="num">${totalUnits.toLocaleString('en-IN')}</span><span class="label">Total units in stock</span></div>
+    <div class="summary-card"><span class="num">${formatPrice(totalValue)}</span><span class="label">Total stock value</span></div>
+    <div class="summary-card ${lowCount ? 'warn' : ''}"><span class="num">${lowCount}</span><span class="label">Low stock (≤ ${CONFIG.LOW_STOCK_THRESHOLD})</span></div>
+    <div class="summary-card ${outCount ? 'warn' : ''}"><span class="num">${outCount}</span><span class="label">Out of stock</span></div>`;
+
+  // ---- table body ----
+  $('#inventoryBody').innerHTML = rows.map(r => {
+    const status = { in: 'In stock', low: 'Low stock', out: 'Out of stock' }[r.status];
+    return `
+    <tr>
+      <td class="col-image"><img src="${escapeAttr(r.image || placeholderImg())}" alt="" onerror="this.src='${placeholderImg()}'"></td>
+      <td>${escapeHtml(r.sku || r.id)}</td>
+      <td>${escapeHtml(r.category || '—')}</td>
+      <td>${escapeHtml(r.name)}</td>
+      <td class="col-num">${formatPrice(r.price)}</td>
+      <td class="col-num">${r.quantity}</td>
+      <td class="col-num">${formatPrice(r.value)}</td>
+      <td><span class="inv-status ${r.status}">${status}</span></td>
+    </tr>`;
+  }).join('');
+
+  $('#inventoryFoot').innerHTML = rows.length ? `
+    <tr>
+      <td colspan="5">Totals</td>
+      <td class="col-num">${totalUnits.toLocaleString('en-IN')}</td>
+      <td class="col-num">${formatPrice(totalValue)}</td>
+      <td></td>
+    </tr>` : '';
+
+  // reflect current sort in header
+  $$('#inventoryTable thead th').forEach(th => {
+    th.classList.toggle('sorted', th.dataset.sort === state.inventorySort.key);
+    th.classList.toggle('asc', th.dataset.sort === state.inventorySort.key && state.inventorySort.dir === 'asc');
+  });
+}
+
+function exportInventoryCsv() {
+  const rows = inventoryRows();
+  const header = ['Code', 'Category', 'Item', 'Rate', 'Stock Qty', 'Value', 'Status'];
+  const lines = [header.join(',')];
+  rows.forEach(r => {
+    const cells = [r.sku || r.id, r.category, r.name, r.price, r.quantity, r.value, r.status]
+      .map(v => `"${String(v).replace(/"/g, '""')}"`);
+    lines.push(cells.join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `inventory-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ====== CHECKOUT ========================================================
 let checkoutContext = null; // { mode: 'single'|'cart', productId?, quantity? }
 
@@ -628,6 +723,20 @@ function bindGlobalUI() {
   $('#modalScrim').addEventListener('click', hideModal);
   $('#checkoutForm').addEventListener('submit', submitCheckout);
   $('#successClose').addEventListener('click', () => { hideModal(); navigate('/shop'); });
+
+  $$('#inventoryTable thead th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      if (state.inventorySort.key === key) {
+        state.inventorySort.dir = state.inventorySort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.inventorySort = { key, dir: 'asc' };
+      }
+      renderInventory();
+    });
+  });
+  $('#inventoryRefresh').addEventListener('click', () => { loadProducts(false); showToast('Inventory refreshed.'); });
+  $('#inventoryExport').addEventListener('click', exportInventoryCsv);
 
   renderCartBadge();
 }

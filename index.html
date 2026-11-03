@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="icon" type="image/png" href="favicon.png">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Woolly & Co. — Handmade Felt Goods</title>
+<title>Baccabi'u - the charm of texture</title>
 <meta name="description" content="Small-batch, hand-felted wool bags, homeware and accessories. Made slowly, in limited quantities, and shipped from our studio.">
 
 <!-- Open Graph -->
-<meta property="og:title" content="Woolly & Co. — Handmade Felt Goods">
+<meta property="og:title" content="Baccabi'u - the charm of texture">
 <meta property="og:description" content="Small-batch, hand-felted wool bags, homeware and accessories.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://images.unsplash.com/photo-1615486364324-2f0b1af0be27?w=1200">
@@ -31,9 +32,9 @@
 
     <a href="#/home" class="logo" data-route="/home">
       <span class="logo-mark" aria-hidden="true">
-        <svg viewBox="0 0 40 40" width="34" height="34"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 22c2-6 5-9 8-9s6 3 8 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <img src="favicon.png" alt="" style="width: 32px; height: 42px; object-fit: contain;">
       </span>
-      <span class="logo-text">Woolly<em>&amp; Co.</em></span>
+      <span class="logo-text">Baccabi'u</span>
     </a>
 
     <nav class="main-nav" id="mainNav" aria-label="Primary">
@@ -93,7 +94,7 @@
           </div>
         </div>
         <div class="hero-art" aria-hidden="true">
-          <img src="https://images.unsplash.com/photo-1615486364324-2f0b1af0be27?w=900&q=80" alt="" loading="eager">
+          <img src="materials.jpg" alt="Stack of hand-felted wool sheets in teal, green and earth tones" loading="eager">
           <span class="hero-tag">
             <svg viewBox="0 0 60 34" class="tag-shape"><path d="M2 4a4 4 0 0 1 4-4h48a4 4 0 0 1 4 4v26a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4Z"/><circle cx="12" cy="17" r="3.5" class="tag-hole"/></svg>
             <span class="tag-text">100% wool</span>
@@ -130,7 +131,7 @@
           <p>We felt in short runs so quality never gets rushed. When a piece is gone, it's gone — restocks are announced, never guaranteed.</p>
           <a href="#/shop" class="btn btn-primary" data-route="/shop">Browse what's left</a>
         </div>
-        <img src="https://images.unsplash.com/photo-1601924582970-9238bcb495d9?w=800&q=80" alt="Rolls of undyed felted wool on a wooden studio table" loading="lazy">
+        <img src="Buddha.png" alt="Hand-felted Buddha figures on a wooden table" loading="lazy">
       </div>
     </section>
 
@@ -201,7 +202,7 @@
     <div class="wrap inventory-head">
       <div>
         <h1>Inventory</h1>
-        <p class="muted">A live read-out of everything in the Products sheet — for checking stock, not for customers.</p>
+        <p class="muted" id="inventoryUpdated">Loading live stock…</p>
       </div>
       <div class="inventory-head-actions">
         <button class="btn btn-ghost small" id="inventoryRefresh">Refresh now</button>
@@ -210,6 +211,18 @@
     </div>
 
     <div class="wrap inventory-summary" id="inventorySummary"><!-- injected --></div>
+
+    <div class="wrap inventory-tools">
+      <input type="search" id="invSearch" placeholder="Search code, item or category…" aria-label="Search inventory">
+      <select id="invCategory" aria-label="Filter by category"><option value="all">All categories</option></select>
+      <select id="invStatus" aria-label="Filter by stock status">
+        <option value="all">All stock levels</option>
+        <option value="in">In stock</option>
+        <option value="low">Low stock</option>
+        <option value="out">Out of stock</option>
+      </select>
+      <span class="muted inv-count" id="inventoryCount"></span>
+    </div>
 
     <div class="wrap inventory-table-wrap">
       <div class="table-scroll">
@@ -221,16 +234,16 @@
               <th data-sort="category">Category</th>
               <th data-sort="name">Item</th>
               <th data-sort="price" class="col-num">Rate</th>
-              <th data-sort="quantity" class="col-num">Stock Qty</th>
+              <th data-sort="stock" class="col-num" title="2026 Stock in the Warehouse">Stock QTY</th>
               <th data-sort="value" class="col-num">Value</th>
               <th data-sort="status">Status</th>
             </tr>
           </thead>
-          <tbody id="inventoryBody"><!-- injected --></tbody>
+          <tbody id="inventoryBody"><tr><td colspan="8" class="inv-loading">Loading inventory…</td></tr></tbody>
           <tfoot id="inventoryFoot"><!-- injected --></tfoot>
         </table>
       </div>
-      <p class="empty-state" id="inventoryEmpty" hidden>No products found — check the Products sheet and API_URL.</p>
+      <p class="empty-state" id="inventoryEmpty" hidden>No products found — check the Warehouse tab link in Code.gs and API_URL in script.js.</p>
     </div>
   </section>
 
@@ -239,7 +252,7 @@
     <div class="wrap narrow prose-page">
       <p class="eyebrow">About the studio</p>
       <h1>Made by hand, from raw fleece up.</h1>
-      <p>Woolly &amp; Co. is a two-person studio working entirely with wet-felting: layering raw wool fibre, then working it with water, soap and pressure until it locks into cloth. No looms, no knitting needles — just hands, time, and a lot of hot water.</p>
+      <p>Baccabi&#39;u is a two-person studio working entirely with wet-felting: layering raw wool fibre, then working it with water, soap and pressure until it locks into cloth. No looms, no knitting needles — just hands, time, and a lot of hot water.</p>
       <p>Every piece on this site is felted in the quantity shown in our workshop log, which is also what powers the stock counts you see while shopping. When something sells out, it's genuinely out — we don't hold back reserve stock.</p>
       <p>We dye small batches ourselves using low-impact, plant and acid dyes, which is part of why colours vary slightly piece to piece. We think that's a feature of handmade goods, not a flaw.</p>
     </div>
@@ -250,11 +263,11 @@
     <div class="wrap narrow prose-page">
       <p class="eyebrow">Get in touch</p>
       <h1>Questions about an order, a custom piece, or wholesale?</h1>
-      <p>Email us any time at <a href="mailto:hello@woollyandco.example">hello@woollyandco.example</a> and we'll reply within a couple of days. For order-specific questions, please include your Order ID.</p>
+      <p>Email us any time at <a href="mailto:baccabiu@gmail.com">baccabiu@gmail.com</a> and we'll reply within a couple of days. For order-specific questions, please include your Order ID.</p>
       <div class="contact-cards">
         <div class="contact-card">
           <h3>Email</h3>
-          <p><a href="mailto:hello@woollyandco.example">hello@woollyandco.example</a></p>
+          <p><a href="mailto:baccabiu@gmail.com">baccabiu@gmail.com</a></p>
         </div>
         <div class="contact-card">
           <h3>Studio</h3>
@@ -270,7 +283,7 @@
 <footer class="site-footer">
   <div class="wrap footer-grid">
     <div>
-      <span class="logo-text footer-logo">Woolly<em>&amp; Co.</em></span>
+      <span class="logo-text footer-logo">Baccabi&#39;u</span>
       <p class="muted">Small-batch hand-felted wool goods, made and shipped from our studio.</p>
     </div>
     <div>
@@ -286,11 +299,11 @@
     </div>
     <div>
       <h4>Stay in touch</h4>
-      <p class="muted">hello@woollyandco.example</p>
+      <p class="muted">baccabiu@gmail.com</p>
     </div>
   </div>
   <div class="wrap footer-bottom">
-    <p>&copy; <span id="year"></span> Woolly &amp; Co. All pieces handmade to order while stock lasts.</p>
+    <p>&copy; <span id="year"></span> Baccabi&#39;u. All pieces handmade to order while stock lasts.</p>
   </div>
 </footer>
 

@@ -8,6 +8,39 @@ backend, no database server.
 Google Sheet  →  Google Apps Script (Code.gs)  →  Website (index.html/style.css/script.js)
 ```
 
+## Updating to this version (Nov 2026)
+
+Pictures uploaded INTO Warehouse cells can't be read directly by a script (Google limitation), so the
+script copies them to a Drive folder ("Baccabi'u shop pictures", one file per SKU) and the site shows those copies:
+- First time: run `authorizeAll` (adds Drive permission), then `syncPictures`, then deploy a New version.
+- Run `installPictureSyncTrigger` once so new/changed pictures are copied every hour by themselves.
+- Check: open `<your /exec URL>?action=imagecheck` (codeVersion should say images-v5).
+- A link in the Warehouse Image-URL column always wins over the in-cell picture.
+
+
+1. **Apps Script:** paste the new `Code.gs` over the old one → Save →
+   **Deploy → Manage deployments → pencil → Version: New version → Deploy**.
+   The `/exec` URL stays the same, so `script.js` needs no change.
+2. **Website:** upload `index.html`, `style.css`, `script.js`, `favicon.png`,
+   `materials.jpg` and `Buddha.png` to the same folder on your host
+   (the hero picture is now `materials.jpg`, not `materials.png`).
+3. In the shop spreadsheet run **Woolly Shop → Check images (diagnostic)** — it lists
+   every product and where its picture comes from, and flags any picture that
+   is floating over cells instead of sitting inside one.
+
+What changed:
+- Products now come **straight from the main inventory** (Warehouse tab, table 1),
+  so every product shows on the shop and the Inventory page even if the
+  Products tab is missing rows or has different headings.
+  The Products tab is still used for Description, Featured and pictures.
+- Pictures: a picture inside the Image cell of **either** the Products tab or the
+  Warehouse tab is shown; Drive share links in the Warehouse tab are converted.
+- Inventory page: shows In inventory (2026 Stock), Web orders (held by open
+  orders), and Available; search, category and stock filters; all 81 products
+  visible; on phones each product is a card instead of a sideways-scrolling table.
+- "New arrivals" links now really filter to new items; no picture flicker on the
+  30-second refresh; leftover "Woolly & Co." text on the site changed to Baccabi'u.
+
 ## Files
 
 | File | Purpose |

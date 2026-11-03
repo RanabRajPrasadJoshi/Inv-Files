@@ -11,7 +11,7 @@
 // ====== CONFIG ================================================
 const CONFIG = {
   // Paste your Apps Script Web App /exec URL here after deploying Code.gs
-  API_URL: 'https://script.google.com/macros/s/AKfycbz3DV7wqny6CHZcwCRydmNUuRxD56b70uePMoW5Vp2v184mPnbF2O2pSBZ8qxYfmmBJ/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbz5yOMD8mvsn8j8guj56Tn-Iq5BKlpBIW9vao7N7hGIlsQCFU2n0i_g1QmjARu36c5r/exec',
   REFRESH_MS: 30000,      // background product refresh interval
   CURRENCY_PREFIX: 'Rs. ',
   LOW_STOCK_THRESHOLD: 5
@@ -23,8 +23,10 @@ const state = {
   productsById: new Map(),
   lastFetch: 0,
   cart: loadCart(),       // [{id, qty}]
-  filters: { category: 'all', inStockOnly: false, featuredOnly: false, sort: 'default', q: '' },
+  filters: { category: 'all', inStockOnly: false, featuredOnly: false, newOnly: false, sort: 'default', q: '' },
   inventorySort: { key: 'category', dir: 'asc' },
+  inventoryFilter: { q: '', category: 'all', status: 'all' },
+  dataSignature: '',
   route: { view: 'home', params: {} }
 };
 
@@ -36,6 +38,7 @@ const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 document.addEventListener('DOMContentLoaded', () => {
   $('#year').textContent = new Date().getFullYear();
   bindGlobalUI();
+  watchSheetImages();
   window.addEventListener('hashchange', route);
   route();               // handle whatever hash is already in the URL
   loadProducts(true);
@@ -49,19 +52,25 @@ async function loadProducts(isFirstLoad) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Could not load products.');
 
-    state.products = data.products;
-    state.productsById = new Map(data.products.map(p => [String(p.id), p]));
+    const products = (data.products || []).filter(p => p && (p.id || p.name));
+    const signature = JSON.stringify(products);
+    const wasEmpty = state.lastFetch === 0;
     state.lastFetch = Date.now();
+    updateInventoryStamp();
+
+    // Background refresh with nothing changed: leave the page alone (no flicker,
+    // no lost quantity you were typing on a product page).
+    if (!wasEmpty && signature === state.dataSignature) return;
+    state.dataSignature = signature;
+
+    state.products = products;
+    state.productsById = new Map(products.map(p => [String(p.id), p]));
 
     reconcileCartWithStock();
     renderCurrentView();
     renderCategoryFilters();
     renderCategoryStrip();
-
-    if (!isFirstLoad) {
-      // quiet refresh — only nudge the user if something they're looking
-      // at changed, rather than interrupting with a toast every 30s
-    }
+    renderInventoryCategoryOptions();
   } catch (err) {
     console.error(err);
     if (isFirstLoad) {
@@ -72,11 +81,15 @@ async function loadProducts(isFirstLoad) {
 }
 
 function renderFetchError() {
-  const grids = ['#featuredGrid', '#newGrid', '#shopGrid'];
-  grids.forEach(sel => {
+  const msg = `Products couldn't be loaded. Confirm CONFIG.API_URL in script.js points at your deployed Apps Script web app.`;
+  ['#featuredGrid', '#newGrid', '#shopGrid'].forEach(sel => {
     const el = $(sel);
-    if (el) el.innerHTML = `<p class="empty-state">Products couldn't be loaded. Confirm CONFIG.API_URL in script.js points at your deployed Apps Script web app.</p>`;
+    if (el) el.innerHTML = `<p class="empty-state">${msg}</p>`;
   });
+  const shopCount = $('#shopResultCount');
+  if (shopCount) shopCount.textContent = 'Could not load products';
+  const invBody = $('#inventoryBody');
+  if (invBody) invBody.innerHTML = `<tr><td colspan="8" class="inv-loading">${msg}</td></tr>`;
 }
 
 /** If stock drops below what's in someone's cart while they're browsing, trim it. */
@@ -117,6 +130,7 @@ function route() {
   if (view === 'shop') {
     state.filters.category = params.cat || 'all';
     state.filters.featuredOnly = params.featured === '1';
+    state.filters.newOnly = params.new === '1';
     state.filters.inStockOnly = false;
     syncFilterUI();
   }
@@ -184,8 +198,9 @@ function applyFilters(products) {
     list = list.filter(p =>
       p.name.toLowerCase().includes(q) ||
       String(p.id).toLowerCase().includes(q) ||
-      p.description.toLowerCase().includes(q) ||
-      p.category.toLowerCase().includes(q)
+      String(p.mandarin || '').toLowerCase().includes(q) ||
+      String(p.description || '').toLowerCase().includes(q) ||
+      String(p.category || '').toLowerCase().includes(q)
     );
   }
   if (f.category && f.category !== 'all') {
@@ -193,6 +208,7 @@ function applyFilters(products) {
   }
   if (f.inStockOnly) list = list.filter(p => p.quantity > 0);
   if (f.featuredOnly) list = list.filter(p => p.featured);
+  if (f.newOnly) list = list.filter(p => p.isNew);
 
   switch (f.sort) {
     case 'price-asc': list.sort((a, b) => a.price - b.price); break;
@@ -233,8 +249,8 @@ function productCard(p) {
   <article class="product-card">
     <div class="product-media">
       <a href="#/product/${encodeURIComponent(p.id)}" data-route-product="${p.id}">
-        <img src="${escapeAttr(p.image || placeholderImg())}" alt="${escapeAttr(p.name)}" loading="lazy"
-             onerror="this.src='${placeholderImg()}'">
+        <img src="${escapeAttr(imageFor(p))}" ${sheetAttr(p)} alt="${escapeAttr(p.name)}" loading="lazy"
+             onerror="imgFallback(this)">
       </a>
       <span class="stock-badge ${status.cls}">${status.label}</span>
       <span class="price-tag">${formatPrice(p.price)}</span>
@@ -245,6 +261,7 @@ function productCard(p) {
         <span class="sku-tag">${escapeHtml(p.sku || p.id)}</span>
       </div>
       <h3 class="product-name"><a href="#/product/${encodeURIComponent(p.id)}" data-route-product="${p.id}">${escapeHtml(p.name)}</a></h3>
+      ${p.mandarin ? `<p class="product-mandarin">${escapeHtml(p.mandarin)}</p>` : ''}
       <div class="product-actions">
         <button class="btn btn-ghost" ${disabled} data-add-cart="${p.id}">Add to cart</button>
         <button class="btn btn-primary" ${disabled} data-buy-now="${p.id}">Buy now</button>
@@ -259,9 +276,165 @@ function stockStatus(p) {
   return { label: 'In stock', cls: 'in' };
 }
 
+// ====== PICTURES STORED IN THE SHEET ==========================================
+/**
+ * A picture uploaded straight into the sheet's Image cell has no public link,
+ * so the products feed marks it (sheetImage: true) and we fetch it from the
+ * Apps Script on demand:  ?action=image&code=F-DC-002  ->  { mime, data(base64) }.
+ * Each picture is requested once, kept in memory, and also saved in the
+ * browser's Cache Storage for 30 minutes so repeat visits are instant.
+ */
+const SHEET_IMG = { urls: new Map(), pending: new Map(), queue: [], active: 0, MAX_PARALLEL: 3 };
+const SHEET_IMG_CACHE = 'woolly-sheet-images-v1';
+const SHEET_IMG_TTL_MS = 30 * 60 * 1000;
+
+/** Attribute that marks an <img> as "fill me from the sheet". */
+function sheetAttr(p) {
+  if (!p.sheetImage) return '';
+  const code = escapeAttr(p.sku || p.id);
+  if (p.image) return `data-sheet-backup="${code}"`;          // link first, script copy if it breaks
+  if (SHEET_IMG.urls.has(sheetKey(p))) return '';   // already showing the real picture
+  return `data-sheet-code="${code}" data-sheet-ver="${escapeAttr(p.imgv || '')}"`;
+}
+
+/** One cache entry per photo version: a replaced photo gets a new key, so it is fetched again. */
+function sheetKey(p) { return String(p.sku || p.id) + '|' + (p.imgv || ''); }
+
+function runSheetImageQueue() {
+  while (SHEET_IMG.active < SHEET_IMG.MAX_PARALLEL && SHEET_IMG.queue.length) {
+    const job = SHEET_IMG.queue.shift();
+    SHEET_IMG.active++;
+    job.fn().then(job.resolve, job.reject).finally(() => {
+      SHEET_IMG.active--;
+      runSheetImageQueue();
+    });
+  }
+}
+function queueSheetImageJob(fn) {
+  return new Promise((resolve, reject) => {
+    SHEET_IMG.queue.push({ fn, resolve, reject });
+    runSheetImageQueue();
+  });
+}
+
+async function downloadSheetImage(code, ver) {
+  const res = await fetch(`${CONFIG.API_URL}?action=image&code=${encodeURIComponent(code)}&v=${encodeURIComponent(ver || '')}`, { cache: 'no-store' });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'picture unavailable');
+  const bin = atob(data.data);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: data.mime || 'image/png' });
+}
+
+async function loadSheetImage(code, ver) {
+  const key = 'sheet-image/' + encodeURIComponent(code) + '/' + encodeURIComponent(ver || '');
+  const canCache = typeof caches !== 'undefined';
+
+  if (canCache) {
+    try {
+      const cache = await caches.open(SHEET_IMG_CACHE);
+      const hit = await cache.match(key);
+      if (hit && (ver || Date.now() - Number(hit.headers.get('X-Fetched-At') || 0) < SHEET_IMG_TTL_MS)) {
+        return URL.createObjectURL(await hit.blob());
+      }
+    } catch (e) { /* cache unavailable - just download */ }
+  }
+
+  const blob = await queueSheetImageJob(() => downloadSheetImage(code, ver));
+
+  if (canCache) {
+    try {
+      const cache = await caches.open(SHEET_IMG_CACHE);
+      await cache.put(key, new Response(blob, {
+        headers: { 'Content-Type': blob.type, 'X-Fetched-At': String(Date.now()) }
+      }));
+    } catch (e) { /* ignore */ }
+  }
+  return URL.createObjectURL(blob);
+}
+
+function getSheetImageUrl(code, ver) {
+  const key = code + '|' + (ver || '');
+  if (SHEET_IMG.urls.has(key)) return Promise.resolve(SHEET_IMG.urls.get(key));
+  if (SHEET_IMG.pending.has(key)) return SHEET_IMG.pending.get(key);
+  const pr = loadSheetImage(code, ver)
+    .then(url => { SHEET_IMG.urls.set(key, url); return url; })
+    .finally(() => SHEET_IMG.pending.delete(key));
+  SHEET_IMG.pending.set(key, pr);
+  return pr;
+}
+
+function fillSheetImage(img) {
+  const code = img.dataset.sheetCode;
+  if (!code || img.dataset.sheetLoading === '1') return;
+  img.dataset.sheetLoading = '1';
+  getSheetImageUrl(code, img.dataset.sheetVer || '')
+    .then(url => { if (url) img.src = url; })
+    .catch(err => {
+      console.warn('Picture for ' + code + ' could not be loaded:', err.message);
+      img.removeAttribute('data-sheet-code'); // keep the placeholder, don't retry in a loop
+    })
+    .finally(() => { img.dataset.sheetLoading = ''; });
+}
+
+/** Watches the page: any product <img> that appears with data-sheet-code gets filled in. */
+function watchSheetImages() {
+  const scan = node => {
+    if (node.nodeType !== 1) return;
+    if (node.matches && node.matches('img[data-sheet-code]')) fillSheetImage(node);
+    if (node.querySelectorAll) node.querySelectorAll('img[data-sheet-code]').forEach(fillSheetImage);
+  };
+  new MutationObserver(muts => muts.forEach(m => m.addedNodes.forEach(scan)))
+    .observe(document.body, { childList: true, subtree: true });
+  scan(document.body);
+}
+
+/**
+ * Where a product's picture comes from. In order:
+ *  1. a full link in the sheet's Image/ImageURL column (http..., data:...)
+ *  2. a bare file name in that column (e.g. "tote.jpg") -> looked up in /images
+ *  3. a picture uploaded INTO the sheet cell -> placeholder first, then the real
+ *     picture is fetched from the Apps Script (see "PICTURES STORED IN THE SHEET")
+ *  4. nothing in the sheet -> /images/<Code>.jpg  (e.g. images/F-DC-001.jpg)
+ */
+function imageFor(p) {
+  const v = String(p.image || '').trim();
+  if (/^(https?:|data:|\/\/|\/)/i.test(v)) return v;
+  if (v) return 'images/' + v;
+  if (p.sheetImage) {
+    const ready = SHEET_IMG.urls.get(sheetKey(p));
+    return ready || placeholderImg(); // real picture is swapped in by fillSheetImage()
+  }
+  // no link: look for a photo named after the SKU in the website's images folder,
+  // e.g. images/F003-EG-MR.jpg (other file types are tried automatically)
+  return 'images/' + encodeURIComponent(p.sku || p.id) + '.jpg';
+}
+
+/** If a picture fails to load, try the other common file types, then the placeholder. */
+const IMAGE_TYPES = ['jpg', 'jpeg', 'png', 'webp', 'JPG', 'JPEG', 'PNG'];
+function imgFallback(img) {
+  // a picture link that failed, but the script can still send the picture from the sheet
+  if (img.dataset.sheetBackup && !img.dataset.sheetCode) {
+    img.dataset.sheetCode = img.dataset.sheetBackup;
+    img.src = placeholderImg();
+    fillSheetImage(img);
+    return;
+  }
+  const m = (img.getAttribute('src') || '').match(/^images\/(.+)\.([A-Za-z]+)$/);
+  const tried = Number(img.dataset.tried || 0);
+  if (m && tried < IMAGE_TYPES.length - 1) {
+    img.dataset.tried = String(tried + 1);
+    img.src = 'images/' + m[1] + '.' + IMAGE_TYPES[tried + 1];
+    return;
+  }
+  img.onerror = null;
+  img.src = placeholderImg();
+}
+
 function placeholderImg() {
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="#F1E9D8"/><text x="50%" y="50%" font-family="sans-serif" font-size="18" fill="#8A7F6D" text-anchor="middle">Woolly &amp; Co.</text></svg>`
+    `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="#F1E9D8"/><text x="50%" y="50%" font-family="sans-serif" font-size="18" fill="#8A7F6D" text-anchor="middle">Baccabi'u</text></svg>`
   );
 }
 
@@ -286,12 +459,13 @@ function renderProductDetail(id) {
   wrap.innerHTML = `
     <div class="pd-grid">
       <div class="pd-media">
-        <img src="${escapeAttr(p.image || placeholderImg())}" alt="${escapeAttr(p.name)}" onerror="this.src='${placeholderImg()}'">
+        <img src="${escapeAttr(imageFor(p))}" ${sheetAttr(p)} alt="${escapeAttr(p.name)}" onerror="imgFallback(this)">
       </div>
       <div class="pd-copy">
         <p class="pd-crumb"><a href="#/shop" data-route="/shop">Shop</a> / <a href="#/shop?cat=${encodeURIComponent(p.category)}" data-route="/shop">${escapeHtml(p.category)}</a></p>
         <div class="pd-sku">SKU: ${escapeHtml(p.sku || p.id)}</div>
         <h1>${escapeHtml(p.name)}</h1>
+        ${p.mandarin ? `<p class="pd-mandarin">${escapeHtml(p.mandarin)}</p>` : ''}
         <div class="pd-price">${formatPrice(p.price)}</div>
         <p class="pd-desc">${escapeHtml(p.description)}</p>
         <span class="pd-stock stock-badge ${status.cls}">${status.label}</span>
@@ -397,7 +571,7 @@ function renderCartBadge() {
 function cartLineHtml(product, line, { removable = true } = {}) {
   return `
   <div class="cart-line" data-cart-line="${product.id}">
-    <img src="${escapeAttr(product.image || placeholderImg())}" alt="${escapeAttr(product.name)}" onerror="this.src='${placeholderImg()}'">
+    <img src="${escapeAttr(imageFor(product))}" ${sheetAttr(product)} alt="${escapeAttr(product.name)}" onerror="imgFallback(this)">
     <div>
       <div class="cart-line-name">${escapeHtml(product.name)}</div>
       <div class="cart-line-meta">${formatPrice(product.price)} each</div>
@@ -469,69 +643,126 @@ function bindCartLineControls(root) {
 
 // ====== INVENTORY =========================================================
 /**
- * A plain, sortable table of everything in the Products sheet — meant for
- * the store owner to eyeball total stock, not a customer-facing page.
- * Reads straight from state.products, which is refreshed on the same
- * 30-second cycle as the shop.
+ * Every product in the main inventory (Warehouse tab, table 1), with its
+ * picture, stock in the inventory, what open web orders are holding, and
+ * what's still available. Refreshed on the same 30-second cycle as the shop.
  */
+function inventoryStatus(p) {
+  return p.quantity <= 0 ? 'out' : (p.quantity <= CONFIG.LOW_STOCK_THRESHOLD ? 'low' : 'in');
+}
+
 function inventoryRows() {
-  const rows = state.products.map(p => ({
-    ...p,
-    value: p.price * p.quantity,
-    status: p.quantity <= 0 ? 'out' : (p.quantity <= CONFIG.LOW_STOCK_THRESHOLD ? 'low' : 'in')
-  }));
+  const f = state.inventoryFilter;
+  const q = f.q.toLowerCase();
+  let rows = state.products.map(p => {
+    const stock = Number.isFinite(p.stock) ? p.stock : p.quantity; // older Code.gs has no "stock"
+    return {
+      ...p,
+      stock,
+      reserved: Number(p.reserved) || 0,
+      value: p.price * stock,
+      status: inventoryStatus(p)
+    };
+  });
+  if (q) rows = rows.filter(r =>
+    String(r.sku || r.id).toLowerCase().includes(q) ||
+    String(r.name).toLowerCase().includes(q) ||
+    String(r.mandarin || '').toLowerCase().includes(q) ||
+    String(r.category || '').toLowerCase().includes(q));
+  if (f.category !== 'all') rows = rows.filter(r => r.category === f.category);
+  if (f.status !== 'all') rows = rows.filter(r => r.status === f.status);
+
   const { key, dir } = state.inventorySort;
   const mul = dir === 'asc' ? 1 : -1;
+  const statusOrder = { out: 0, low: 1, in: 2 };
   rows.sort((a, b) => {
     let av = a[key], bv = b[key];
-    if (typeof av === 'string') { av = av.toLowerCase(); bv = String(bv).toLowerCase(); }
+    if (key === 'status') { av = statusOrder[av]; bv = statusOrder[bv]; }
+    if (key === 'image') { av = a.image || a.sheetImage ? 1 : 0; bv = b.image || b.sheetImage ? 1 : 0; }
+    if (typeof av === 'string' || typeof bv === 'string') {
+      const c = String(av || '').localeCompare(String(bv || ''), undefined, { numeric: true, sensitivity: 'base' });
+      return c * mul || String(a.sku).localeCompare(String(b.sku), undefined, { numeric: true });
+    }
     if (av < bv) return -1 * mul;
     if (av > bv) return 1 * mul;
-    return 0;
+    return String(a.sku).localeCompare(String(b.sku), undefined, { numeric: true });
   });
   return rows;
 }
 
-function renderInventory() {
-  const rows = inventoryRows();
-  const el = $('#inventoryTable');
-  $('#inventoryEmpty').hidden = rows.length !== 0 || state.lastFetch === 0;
-  el.style.display = rows.length || state.lastFetch === 0 ? '' : 'none';
+function renderInventoryCategoryOptions() {
+  const sel = $('#invCategory');
+  if (!sel) return;
+  const current = state.inventoryFilter.category;
+  sel.innerHTML = `<option value="all">All categories</option>` +
+    uniqueCategories().map(c => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join('');
+  sel.value = uniqueCategories().includes(current) ? current : 'all';
+  state.inventoryFilter.category = sel.value;
+}
 
-  // ---- summary cards ----
-  const totalUnits = rows.reduce((s, r) => s + r.quantity, 0);
-  const totalValue = rows.reduce((s, r) => s + r.value, 0);
-  const outCount = rows.filter(r => r.status === 'out').length;
-  const lowCount = rows.filter(r => r.status === 'low').length;
+function updateInventoryStamp() {
+  const el = $('#inventoryUpdated');
+  if (el && state.lastFetch) {
+    el.textContent = 'Live from the main inventory · updated ' +
+      new Date(state.lastFetch).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+}
+
+function renderInventory() {
+  const body = $('#inventoryBody');
+  if (!state.lastFetch) {
+    body.innerHTML = `<tr><td colspan="8" class="inv-loading">Loading inventory…</td></tr>`;
+    return;
+  }
+  const all = state.products;
+  const rows = inventoryRows();
+  const filtered = rows.length !== all.length;
+
+  $('#inventoryEmpty').hidden = all.length !== 0;
+  $('#inventoryTable').style.display = all.length ? '' : 'none';
+
+  // ---- summary cards (always for the whole inventory, not just the filtered rows) ----
+  const sum = (list, f) => list.reduce((s, r) => s + f(r), 0);
+  const stockOf = p => (Number.isFinite(p.stock) ? p.stock : p.quantity);
+  const totalUnits = sum(all, stockOf);
+  const totalValue = sum(all, p => p.price * stockOf(p));
+  const outCount = all.filter(p => inventoryStatus(p) === 'out').length;
+  const lowCount = all.filter(p => inventoryStatus(p) === 'low').length;
 
   $('#inventorySummary').innerHTML = `
-    <div class="summary-card"><span class="num">${rows.length}</span><span class="label">Products</span></div>
-    <div class="summary-card"><span class="num">${totalUnits.toLocaleString('en-IN')}</span><span class="label">Total units in stock</span></div>
-    <div class="summary-card"><span class="num">${formatPrice(totalValue)}</span><span class="label">Total stock value</span></div>
+    <div class="summary-card"><span class="num">${all.length}</span><span class="label">Products</span></div>
+    <div class="summary-card"><span class="num">${totalUnits.toLocaleString('en-IN')}</span><span class="label">Units in stock</span></div>
+    <div class="summary-card"><span class="num">${formatPrice(totalValue)}</span><span class="label">Stock value</span></div>
     <div class="summary-card ${lowCount ? 'warn' : ''}"><span class="num">${lowCount}</span><span class="label">Low stock (≤ ${CONFIG.LOW_STOCK_THRESHOLD})</span></div>
     <div class="summary-card ${outCount ? 'warn' : ''}"><span class="num">${outCount}</span><span class="label">Out of stock</span></div>`;
 
+  $('#inventoryCount').textContent = filtered
+    ? `Showing ${rows.length} of ${all.length} products`
+    : `Showing all ${all.length} products`;
+
   // ---- table body ----
-  $('#inventoryBody').innerHTML = rows.map(r => {
+  body.innerHTML = rows.length ? rows.map(r => {
     const status = { in: 'In stock', low: 'Low stock', out: 'Out of stock' }[r.status];
+    const link = `#/product/${encodeURIComponent(r.id)}`;
     return `
     <tr>
-      <td class="col-image"><img src="${escapeAttr(r.image || placeholderImg())}" alt="" onerror="this.src='${placeholderImg()}'"></td>
-      <td>${escapeHtml(r.sku || r.id)}</td>
-      <td>${escapeHtml(r.category || '—')}</td>
-      <td>${escapeHtml(r.name)}</td>
-      <td class="col-num">${formatPrice(r.price)}</td>
-      <td class="col-num">${r.quantity}</td>
-      <td class="col-num">${formatPrice(r.value)}</td>
-      <td><span class="inv-status ${r.status}">${status}</span></td>
+      <td class="col-image" data-label="Image"><a href="${link}"><img src="${escapeAttr(imageFor(r))}" ${sheetAttr(r)} alt="${escapeAttr(r.name)}" loading="lazy" onerror="imgFallback(this)"></a></td>
+      <td class="col-code" data-label="Code">${escapeHtml(r.sku || r.id)}</td>
+      <td data-label="Category">${escapeHtml(r.category || '—')}</td>
+      <td class="col-name" data-label="Item"><a href="${link}">${escapeHtml(r.name)}</a>${r.isNew ? ' <span class="inv-new">New</span>' : ''}${r.mandarin ? `<div class="inv-mandarin">${escapeHtml(r.mandarin)}</div>` : ''}</td>
+      <td class="col-num" data-label="Rate">${formatPrice(r.price)}</td>
+      <td class="col-num strong" data-label="Stock QTY">${r.stock.toLocaleString('en-IN')}</td>
+      <td class="col-num" data-label="Value">${formatPrice(r.value)}</td>
+      <td data-label="Status"><span class="inv-status ${r.status}">${status}</span></td>
     </tr>`;
-  }).join('');
+  }).join('') : `<tr><td colspan="8" class="inv-loading">No products match these filters.</td></tr>`;
 
+  const fUnits = sum(rows, r => r.stock), fValue = sum(rows, r => r.value);
   $('#inventoryFoot').innerHTML = rows.length ? `
     <tr>
-      <td colspan="5">Totals</td>
-      <td class="col-num">${totalUnits.toLocaleString('en-IN')}</td>
-      <td class="col-num">${formatPrice(totalValue)}</td>
+      <td colspan="5" data-label="">${filtered ? 'Totals (filtered)' : 'Totals'}</td>
+      <td class="col-num" data-label="Stock QTY">${fUnits.toLocaleString('en-IN')}</td>
+      <td class="col-num" data-label="Value">${formatPrice(fValue)}</td>
       <td></td>
     </tr>` : '';
 
@@ -540,24 +771,26 @@ function renderInventory() {
     th.classList.toggle('sorted', th.dataset.sort === state.inventorySort.key);
     th.classList.toggle('asc', th.dataset.sort === state.inventorySort.key && state.inventorySort.dir === 'asc');
   });
+  updateInventoryStamp();
 }
 
 function exportInventoryCsv() {
   const rows = inventoryRows();
-  const header = ['Code', 'Category', 'Item', 'Rate', 'Stock Qty', 'Value', 'Status'];
+  const header = ['Code', 'Category', 'Item', 'Mandarin', 'Rate', 'Stock QTY', 'Value', 'Status', 'Image'];
   const lines = [header.join(',')];
   rows.forEach(r => {
-    const cells = [r.sku || r.id, r.category, r.name, r.price, r.quantity, r.value, r.status]
+    const cells = [r.sku || r.id, r.category, r.name, r.mandarin || '', r.price, r.stock, r.value, r.status,
+      /^https?:/i.test(r.image || '') ? r.image : (r.sheetImage ? 'picture in sheet' : '')]
       .map(v => `"${String(v).replace(/"/g, '""')}"`);
     lines.push(cells.join(','));
   });
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = `inventory-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ====== CHECKOUT ========================================================
@@ -583,7 +816,7 @@ function renderCheckoutSummary() {
   if (checkoutContext.mode === 'single') {
     const p = state.productsById.get(String(checkoutContext.productId));
     el.innerHTML = `
-      <img src="${escapeAttr(p.image || placeholderImg())}" alt="" onerror="this.src='${placeholderImg()}'">
+      <img src="${escapeAttr(imageFor(p))}" ${sheetAttr(p)} alt="" onerror="imgFallback(this)">
       <div class="checkout-summary-meta">
         <strong>${escapeHtml(p.name)}</strong>
         <span>${formatPrice(p.price)} × ${checkoutContext.quantity}</span><br>
@@ -713,7 +946,7 @@ function bindGlobalUI() {
   $('#filterFeatured').addEventListener('change', e => { state.filters.featuredOnly = e.target.checked; renderShop(); });
   $('#sortSelect').addEventListener('change', e => { state.filters.sort = e.target.value; renderShop(); });
   $('#clearFilters').addEventListener('click', () => {
-    state.filters = { category: 'all', inStockOnly: false, featuredOnly: false, sort: 'default', q: '' };
+    state.filters = { category: 'all', inStockOnly: false, featuredOnly: false, newOnly: false, sort: 'default', q: '' };
     $('#searchInput').value = '';
     syncFilterUI();
     renderShop();
@@ -735,7 +968,17 @@ function bindGlobalUI() {
       renderInventory();
     });
   });
-  $('#inventoryRefresh').addEventListener('click', () => { loadProducts(false); showToast('Inventory refreshed.'); });
+  $('#inventoryRefresh').addEventListener('click', async () => {
+    showToast('Refreshing inventory…');
+    await loadProducts(false);
+    renderInventory();
+  });
+  $('#invSearch').addEventListener('input', debounce(e => {
+    state.inventoryFilter.q = e.target.value.trim();
+    renderInventory();
+  }, 150));
+  $('#invCategory').addEventListener('change', e => { state.inventoryFilter.category = e.target.value; renderInventory(); });
+  $('#invStatus').addEventListener('change', e => { state.inventoryFilter.status = e.target.value; renderInventory(); });
   $('#inventoryExport').addEventListener('click', exportInventoryCsv);
 
   renderCartBadge();
